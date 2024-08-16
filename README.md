@@ -1,4 +1,23 @@
-# group-project-final
+# group-project-final - AI Videogame
+
+## Team
+1. Jacob Van Skyhawk
+2. Ian Taylor
+3. David Moyes
+4. Jake Backues
+
+## Goal
+
+Use a Reinforcement Learning AI model to that can beat us (but really David) at Tetris.
+
+## Data Set
+The model should learn by playing the game.
+
+## High-level plan
+1. Run the game locally
+2. figure out how to have a model play the running game
+3. Build model(s) (Divide and conquer)
+4. Train model(s)
 
 ## Resources
 

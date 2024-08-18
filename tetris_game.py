@@ -1,5 +1,14 @@
+from ale_py import ALEInterface, roms
+
+ale = ALEInterface()
+ale.loadROM(roms.Tetris)
+ale.reset_game()
+
+reward = ale.act(0)  # noop
+screen_obs = ale.getScreenRGB()
+
 import gymnasium as gym
-import gym_tetris
+import ale_py
 import time
 
 gym.register_envs(ale_py)  # unnecessary but helpful for IDEs
@@ -20,7 +29,7 @@ while not done:
 
     # Use a random action for demonstration purposes
     action = env.action_space.sample()
-    obs, reward, done, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step(action)
     
     # Render the environment
     env.render()

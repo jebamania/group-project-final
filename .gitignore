@@ -83,7 +83,8 @@ profile_default/
 ipython_config.py
 
 #Pyboy Files - including the game and screenshots
-Tetris.gb 
+Tetris.gb
+Tetris.gb.ram 
 *.png
 *.gif
 

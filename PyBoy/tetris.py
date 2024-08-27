@@ -1,36 +1,43 @@
+import imageio
 from pyboy import PyBoy
-from pyboy.utils import WindowEvent
+from PyBoy.tetris_env import GenericPyBoyEnv
 
-from pyboy import PyBoy
-from pyboy.utils import WindowEvent
+# Initialize PyBoy with the Tetris ROM
+rom_path = 'Tetris.gb'
+env = GenericPyBoyEnv(rom_path)
 
-# Initialize the emulator with the Tetris ROM
-pyboy = PyBoy('Tetris.gb')
-pyboy.set_emulation_speed(0)
-assert pyboy.cartridge_title == "TETRIS"
+# Wrap your environment to be vectorized
+from stable_baselines3.common.env_util import make_vec_env
+env = make_vec_env(lambda: GenericPyBoyEnv(rom_path), n_envs=1)
 
-# Start the Tetris game
-tetris = pyboy.game_wrapper
-tetris.start_game(timer_div=0x00)  # The timer_div works like a random seed in Tetris
-pyboy.tick()  # To render screen after `.start_game`
+# Initialize the PPO model
+from stable_baselines3 import PPO
+model = PPO("CnnPolicy", env, verbose=1)
 
-# Start screen recording
-pyboy.send_input(WindowEvent.SCREEN_RECORDING_TOGGLE)
+# Function to capture frames for GIF
+def capture_frames(env, num_frames=1000):
+    frames = []  # Store frames for GIF
+    obs = env.reset()
+    for _ in range(num_frames):
+        frames.append(env.render(mode='rgb_array'))  # Capture the screen
+        action, _states = model.predict(obs)
+        obs, rewards, done, info = env.step(action)
+        if done:
+            obs = env.reset()
+    return frames
 
-# Keep playing the game until game over
-while not tetris.game_over():
-    pyboy.tick(1, True)
-    pyboy.button("right")  # The playing "technique" is just to move the Tetromino to the right.
+# Record the first attempt
+frames = capture_frames(env)
+# Save the first attempt GIF
+imageio.mimsave('first_attempt.gif', frames, fps=30)
 
-# Save the final screen
-pyboy.screen.image.save("Tetris2.png")
-pyboy.send_input(WindowEvent.SCREEN_RECORDING_TOGGLE)
+# Train the model
+model.learn(total_timesteps=10000)
 
-# Output the final score
-print("Game Over!")
-print(f"Final Score: {tetris.score}")
-print(f"Final Level: {tetris.level}")
-print(f"Total Lines Cleared: {tetris.lines}")
+# Record the last attempt
+frames = capture_frames(env)
+# Save the last attempt GIF
+imageio.mimsave('last_attempt.gif', frames, fps=30)
 
-# Stop the emulator
-pyboy.stop()
+# Close the environment
+env.close()

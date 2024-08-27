@@ -87,6 +87,9 @@ Tetris.gb
 Tetris.gb.ram 
 *.png
 *.gif
+*.zip
+*.gif
+ppo_tetris_tensorboard
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is

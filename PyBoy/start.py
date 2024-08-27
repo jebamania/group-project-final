@@ -1,68 +1,52 @@
+import imageio
 import gymnasium as gym
-from gymnasium import spaces
-import numpy as np
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
 from pyboy import PyBoy
-from tetris import tetris # Assuming tetris.py is in the same directory and correctly structured.
+from PyBoy.tetris_env import GenericPyBoyEnv  # Ensure this import matches the file and class names
 
-actions = ['', 'a', 'b', 'left', 'right', 'up', 'down', 'start', 'select']
+def main():
+    # Initialize PyBoy with the Tetris ROM
+    pyboy = PyBoy('Tetris.gb')
+    env = GenericPyBoyEnv(pyboy)
 
-matrix_shape = (16, 20)
-game_area_observation_space = spaces.Box(low=0, high=255, shape=matrix_shape, dtype=np.uint8)
+    # Wrap your environment to be vectorized
+    env = make_vec_env(lambda: env, n_envs=1)
 
-class GenericPyBoyEnv(gym.Env):
-    def __init__(self, tetris_rom, debug=False):
-        super().__init__()
-        self.pyboy = PyBoy(tetris_rom)
-        self.tetris = tetris(self.pyboy)  # Instantiate the Tetris game wrapper from tetris.py
-        self._fitness = 0
-        self._previous_fitness = 0
-        self.debug = debug
+    # Initialize the PPO model with MlpPolicy
+    model = PPO("CnnPolicy", env, verbose=1)
 
-        if not self.debug:
-            self.pyboy.set_emulation_speed(0)
+    # Record the first attempt
+    obs = env.reset()
+    frames = []  # Store frames for GIF
+    for _ in range(1000):
+        frames.append(env.render(mode='rgb_array'))  # Capture the screen
+        action, _states = model.predict(obs)
+        obs, rewards, done, info = env.step(action)
+        if done:
+            break
 
-        self.action_space = spaces.Discrete(len(actions))
-        self.observation_space = game_area_observation_space
+    # Save the first attempt GIF
+    imageio.mimsave('first_attempt.gif', frames, fps=30)
 
-        self.tetris.start_game()  # Start the Tetris game
+    # Train the model
+    model.learn(total_timesteps=10000)
 
-    def step(self, action):
-        assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+    # Record the last attempt
+    obs = env.reset()
+    frames = []  # Store frames for GIF
+    for _ in range(1000):
+        frames.append(env.render(mode='rgb_array'))  # Capture the screen
+        action, _states = model.predict(obs)
+        obs, rewards, done, info = env.step(action)
+        if done:
+            break
 
-        # Move the agent
-        if action == 0:
-            pass
-        else:
-            self.pyboy.button(actions[action])
+    # Save the last attempt GIF
+    imageio.mimsave('last_attempt.gif', frames, fps=30)
 
-        self.pyboy.tick(1)
+    # Close the environment
+    env.close()
 
-        done = self.tetris.game_over  # Check if the game is over
-
-        self._calculate_fitness()
-        reward = self._fitness - self._previous_fitness
-
-        observation = self.tetris.game_area()  # Get the current game area
-        info = {}
-        truncated = False
-
-        return observation, reward, done, truncated, info
-
-    def _calculate_fitness(self):
-        self._previous_fitness = self._fitness
-        self._fitness = self.tetris.score  # Use the score from the Tetris game
-
-    def reset(self, **kwargs):
-        self.tetris.reset_game()  # Reset the Tetris game
-        self._fitness = 0
-        self._previous_fitness = 0
-
-        observation = self.tetris.game_area()  # Get the initial game area
-        info = {}
-        return observation, info
-
-    def render(self, mode='human'):
-        pass
-
-    def close(self):
-        self.pyboy.stop()
+if __name__ == "__main__":
+    main()

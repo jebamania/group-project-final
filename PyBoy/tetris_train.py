@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import torch.optim as optim
 import pandas as pd
 import time
 import imageio
@@ -19,18 +21,49 @@ class CustomCallback(BaseCallback):
         self.episode_lengths = []
 
     def _on_step(self) -> bool:
-        if self.num_timesteps % 1000 == 0:  # Adjust frequency as needed
+        if len(self.model.ep_info_buffer) > 0:
+            # Get the latest episode information
             last_info = self.model.ep_info_buffer[-1]
             self.episode_rewards.append(last_info['r'])
             self.episode_lengths.append(last_info['l'])
+
+            # Log rewards every 100000 timesteps
+            if self.num_timesteps % 100000 == 0:
+                mean_reward = np.mean(self.episode_rewards[-100:])
+                print(f"Mean Reward (last 100 episodes): {mean_reward}")
+
+                # Log the mean reward to TensorBoard
+                self.logger.record('eval/mean_reward', mean_reward)
+
         return True
 
     def _on_training_end(self) -> None:
+        # Save rewards to a file for later analysis
         df = pd.DataFrame({
             'Episode Rewards': self.episode_rewards,
             'Episode Lengths': self.episode_lengths
         })
         df.to_csv('training_progress.csv', index=False)
+
+class RewardTrackingCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(RewardTrackingCallback, self).__init__(verbose)
+        self.episode_rewards = []
+    
+    def _on_step(self) -> bool:
+        # This method is called at each step
+        return True
+    
+    def _on_rollout_end(self) -> None:
+        # This method is called at the end of each rollout
+        episode_reward = self.locals.get('reward', 0)
+        self.episode_rewards.append(episode_reward)
+        
+        if len(self.episode_rewards) > 0:
+            mean_reward = np.mean(self.episode_rewards)
+            print(f"Mean reward so far: {mean_reward:.2f}")
+        
+        return super(RewardTrackingCallback, self)._on_rollout_end()
 
 class ProgressCallback(BaseCallback):
     def __init__(self, verbose=0):
@@ -38,39 +71,11 @@ class ProgressCallback(BaseCallback):
         self.start_time = time.time()
 
     def _on_step(self) -> bool:
-        if self.n_calls % 1000 == 0:  # Adjust this to control how often updates are printed
+        # Print elapsed time and total timesteps every 1000 calls
+        if self.n_calls % 100000 == 0:  # Adjust this to control how often updates are printed
             elapsed_time = time.time() - self.start_time
             print(f"Step: {self.num_timesteps}, Elapsed Time: {elapsed_time:.2f} seconds")
         return True
-
-class GIFCallback(BaseCallback):
-    def __init__(self, save_freq, gif_path_prefix, env, verbose=0):
-        super().__init__(verbose)
-        self.save_freq = save_freq
-        self.gif_path_prefix = gif_path_prefix
-        self.env = env
-        self.frames = []
-        self.save_count = 0
-
-    def _on_step(self) -> bool:
-        if self.num_timesteps % self.save_freq == 0:
-            frame = self.env.render(mode='rgb_array')
-            self.frames.append(frame)
-
-            if self.num_timesteps % (self.save_freq * 5) == 0:  # Save every 5 times save_freq
-                self._save_gif()
-
-        return True
-
-    def _on_training_end(self) -> None:
-        if self.frames:
-            self._save_gif()
-
-    def _save_gif(self):
-        gif_path = f"{self.gif_path_prefix}_{self.save_count}.gif"
-        imageio.mimsave(gif_path, self.frames, fps=10)
-        self.frames = []
-        self.save_count += 1
 
 def make_env(rom_path):
     env = TetrisEnv(rom_path)
@@ -78,30 +83,18 @@ def make_env(rom_path):
 
 def env_quck_test():
     env = TetrisEnv(rom_path="Tetris.gb")
-    print("Env created!")
     obs, info = env.reset()
     print(f"Initial observation shape: {obs.shape}")
-
     action = env.action_space.sample()
     obs, reward, done, truncated, info = env.step(action)
     print(f"Step result: observation shape={obs.shape}, reward={reward}, done={done}")
     # Check the environment directly
 
-def test_pyboy_start_game():
-    pyboy = PyBoy("Tetris.gb")
-    pyboy.set_emulation_speed(1)  # Use a non-zero speed for testing
-    tetris = pyboy.game_wrapper
-    tetris.start_game(timer_div=0x00)  # Test this in isolation
-    print("Game started.")
-
 def create_env(rom_path='Tetris.gb', num_envs=1):
     print(f"Initializing PyBoy with ROM: {rom_path}")
 
     env = DummyVecEnv([lambda: make_env(rom_path) for _ in range(num_envs)])
-    env = VecNormalize(env, norm_obs=True, norm_reward=True)
-
-    print("Checking env...")
-    check_env(env, warn=None)
+    ##env = VecNormalize(env, norm_obs=True, norm_reward=True)
 
     print(f"Environment created with {num_envs} vectorized environments.")
     return env
@@ -110,28 +103,58 @@ def train_model(env):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Training on: {device}")
 
+    # Specify the TensorBoard log directory
+    tensorboard_log_dir = "./ppo_tetris_tensorboard/"
+
+    # Initialize the PPO model with TensorBoard logging enabled
     model = PPO(
-        "CnnPolicy", 
+        "MlpPolicy", 
         env, 
-        verbose=2, 
-        device=device, 
-        policy_kwargs=dict(normalize_images=False)
+        verbose=1,
+        tensorboard_log=tensorboard_log_dir, 
+        device=device,
+        learning_rate=1e-3,  # Decreased learning rate for stability
+        n_steps=512,  # Increased steps per update
+        batch_size=32,  # Increased batch size
+        gamma=0.99,  # Increased gamma for long-term rewards
+        gae_lambda=0.98,  # Increased GAE lambda
+        ent_coef=.01,  # Increased entropy coefficient for more exploration
+        n_epochs=10,
+        clip_range=0.1,  # Reduced clipping range for more stable updates
+        max_grad_norm=0.5  # Gradient clipping to prevent exploding gradients
     )
     print(f"PPO model initialized.")
 
-    gif_callback = GIFCallback(
-        save_freq=1000,  # Adjust this to control how often GIFs are captured
-        gif_path_prefix="progress",
-        env=env
-    )
+    # Set up CustomCallback for mean_reward and mean_ep_length reporting
+    custom_callback = CustomCallback(verbose=1)
+    return model, custom_callback
 
-    return model
-
-def model_learn(model):
+def model_learn(model, custom_callback, timesteps=100000):
     progress_callback = ProgressCallback(verbose=1)
 
     print("Starting model training...")
-    model.learn(total_timesteps=10000, callback=progress_callback)
+    model.learn(
+        total_timesteps=timesteps,
+        callback=[progress_callback, custom_callback],  # Ensure callbacks are passed
+        progress_bar=True
+    )
     print("Model training completed.")
 
     return model
+
+def play_and_record(model, env, num_frames=1000, gif_filename='model_play.gif'):
+    # Optionally load a saved state
+    # env.load_state('saved_state.pkl')  # Assuming you have a method for this
+
+    obs, info = env.reset()  # Extract the observation only
+    frames = []
+
+    done = False  # Initialize done to False to start the game loop
+    while not done:  # Continue until the game is over
+        frames.append(env.render(mode='rgb_array'))  # Capture the screen
+        action, _ = model.predict(obs)  # Predict the next action based on the observation
+        obs, reward, done, truncated, info = env.step(action)  # Unpack all values returned by step()
+
+    # Save the frames as a GIF
+    imageio.mimsave(gif_filename, frames, fps=30)
+    print(f"Game play GIF saved as {gif_filename}")

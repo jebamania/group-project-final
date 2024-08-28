@@ -8,7 +8,7 @@
 
 ## Goal
 
-Use a Reinforcement Learning AI model to that can beat us (but really David) at Tetris.
+Use a Reinforcement Learning AI model that can beat us (but really David) at Tetris.
 
 ## Data Set
 The model should learn by playing the game.
@@ -24,3 +24,4 @@ The model should learn by playing the game.
 1. [Deep Q Learning](https://towardsdatascience.com/self-learning-ai-agents-part-ii-deep-q-learning-b5ac60c3f47)
 2. [Gym - Tetris](https://gymnasium.farama.org/environments/atari/tetris/#actions)
 3. [Q Learning Example](https://www.simplilearn.com/tutorials/machine-learning-tutorial/what-is-q-learning)
+4. [PyBoy](https://github.com/Baekalfen/PyBoy)

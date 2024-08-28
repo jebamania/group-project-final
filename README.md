@@ -35,3 +35,4 @@ We were able to implement emulators and game wrappers, then inject premade RL mo
 6. [Stable-baselines3](https://github.com/DLR-RM/stable-baselines3)
 7. [Q-Learning Agent](https://github.com/nuno-faria/tetris-ai/blob/master/dqn_agent.py)
 8. [Stable-baselines3 documentation](https://stable-baselines3.readthedocs.io/en/master/index.html)
+9. [PyBoy](https://github.com/Baekalfen/PyBoy)
